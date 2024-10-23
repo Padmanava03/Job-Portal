@@ -107,7 +107,7 @@ def application_management():
 
                 cursor.close()
                 conn.close()
-                view_applicants()  # Refresh the list of applicants
+                view_applicants()
 
     select_button = tk.Button(applicants_frame, text="Accept Applicant", command=lambda: select_or_reject_applicant("accept"))
     select_button.pack(pady=5)
@@ -122,7 +122,6 @@ def application_management():
             conn = connect_to_db()
             if conn:
                 cursor = conn.cursor()
-                # Fetch the resume link for the selected applicant
                 cursor.execute("""
                     SELECT r.ResumeGDriveLink 
                     FROM Resumes r 
@@ -130,9 +129,8 @@ def application_management():
                     WHERE a.ApplicantID = %s
                 """, (applicant_id,))
                 result = cursor.fetchone()
-                if result and result[0]:  # Ensure there's a link to open
+                if result and result[0]:
                     resume_link = result[0]
-                    # Open the resume link in the default web browser
                     webbrowser.open(resume_link)
                 else:
                     messagebox.showinfo("No Resume", f"No resume found for Applicant {applicant_id}.")
