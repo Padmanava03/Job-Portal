@@ -1,6 +1,7 @@
 import tkinter as tk
 from tkinter import messagebox
 import mysql.connector
+import webbrowser
 
 # MySQL configuration
 config = {
@@ -34,15 +35,21 @@ def application_management():
         conn = connect_to_db()
         if conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT a.ApplicantID, a.ApplicantName, a.ApplicantEmail FROM Applicants a")
+            cursor.execute("""
+                SELECT a.ApplicantID, a.ApplicantName, a.ApplicantEmail, j.JobID, j.JobTitle
+                FROM Applications app
+                JOIN Applicants a ON app.ApplicantID = a.ApplicantID
+                JOIN JobListings j ON app.JobID = j.JobID
+                WHERE app.Status = 'Pending'  -- Only show pending applications
+            """)
             applicants = cursor.fetchall()
             applicants_list.delete(0, tk.END)
             for applicant in applicants:
-                applicants_list.insert(tk.END, f"{applicant[0]} - {applicant[1]} ({applicant[2]})")
+                applicants_list.insert(tk.END, f"{applicant[0]} - {applicant[1]} ({applicant[2]}) - Job ID: {applicant[3]}, Job Title: {applicant[4]}")
             cursor.close()
             conn.close()
 
-    view_applicants_button = tk.Button(applicants_frame, text="View Applicants", command=view_applicants)
+    view_applicants_button = tk.Button(applicants_frame, text="View Pending Applicants", command=view_applicants)
     view_applicants_button.pack(pady=10)
 
     def select_or_reject_applicant(action):
@@ -53,11 +60,19 @@ def application_management():
             if conn:
                 cursor = conn.cursor()
                 if action == "accept":
+                    # Update the status to Accepted
+                    cursor.execute(f"""
+                        UPDATE Applications
+                        SET Status = 'Accepted'
+                        WHERE ApplicantID = {applicant_id}
+                    """)
+                    conn.commit()
+
                     # Fetch job ID and applicant details
                     cursor.execute(f"""
-                        SELECT a.JobID, ap.ApplicantName, ap.ApplicantEmail, ap.ApplicantPhone, ap.ApplicantAddress
-                        FROM Applications a
-                        JOIN Applicants ap ON a.ApplicantID = ap.ApplicantID
+                        SELECT app.JobID, ap.ApplicantName, ap.ApplicantEmail, ap.ApplicantPhone, ap.ApplicantAddress
+                        FROM Applications app
+                        JOIN Applicants ap ON app.ApplicantID = ap.ApplicantID
                         WHERE ap.ApplicantID = {applicant_id}
                     """)
                     result = cursor.fetchone()
@@ -65,7 +80,7 @@ def application_management():
                         job_id, applicant_name, applicant_email, applicant_phone, applicant_address = result
 
                         # Insert employer details into Employers table
-                        cursor.execute("""
+                        cursor.execute(""" 
                             INSERT INTO Employers (EmployerName, EmployerEmail, EmployerPhone, EmployerAddress)
                             VALUES (%s, %s, %s, %s)
                         """, (applicant_name, applicant_email, applicant_phone, applicant_address))
@@ -75,32 +90,60 @@ def application_management():
                         employer_id = cursor.lastrowid
 
                         # Insert into EmployerJob table
-                        cursor.execute("""
+                        cursor.execute(""" 
                             INSERT INTO EmployerJob (EmployerID, JobID)
                             VALUES (%s, %s)
                         """, (employer_id, job_id))
-
-                        # Remove from Applicants and Applications
-                        cursor.execute(f"DELETE FROM Applicants WHERE ApplicantID={applicant_id}")
-                        cursor.execute(f"DELETE FROM Applications WHERE ApplicantID={applicant_id}")
-                        messagebox.showinfo("Success", f"Applicant {applicant_id} accepted.")
+                        conn.commit()  # Commit after both inserts
 
                 elif action == "reject":
-                    # Remove from Applicants and Applications
-                    cursor.execute(f"DELETE FROM Applicants WHERE ApplicantID={applicant_id}")
-                    cursor.execute(f"DELETE FROM Applications WHERE ApplicantID={applicant_id}")
-                    messagebox.showinfo("Success", f"Applicant {applicant_id} rejected.")
+                    # Update the status to Rejected
+                    cursor.execute(f"""
+                        UPDATE Applications
+                        SET Status = 'Rejected'
+                        WHERE ApplicantID = {applicant_id}
+                    """)
+                    conn.commit()
 
-                conn.commit()
                 cursor.close()
                 conn.close()
-                view_applicants()
+                view_applicants()  # Refresh the list of applicants
 
     select_button = tk.Button(applicants_frame, text="Accept Applicant", command=lambda: select_or_reject_applicant("accept"))
     select_button.pack(pady=5)
 
     reject_button = tk.Button(applicants_frame, text="Reject Applicant", command=lambda: select_or_reject_applicant("reject"))
     reject_button.pack(pady=5)
+
+    def view_resume():
+        selected_applicant = applicants_list.get(tk.ACTIVE)
+        if selected_applicant:
+            applicant_id = selected_applicant.split(" - ")[0]
+            conn = connect_to_db()
+            if conn:
+                cursor = conn.cursor()
+                # Fetch the resume link for the selected applicant
+                cursor.execute("""
+                    SELECT r.ResumeGDriveLink 
+                    FROM Resumes r 
+                    JOIN Applicants a ON r.ApplicantID = a.ApplicantID 
+                    WHERE a.ApplicantID = %s
+                """, (applicant_id,))
+                result = cursor.fetchone()
+                if result and result[0]:  # Ensure there's a link to open
+                    resume_link = result[0]
+                    # Open the resume link in the default web browser
+                    webbrowser.open(resume_link)
+                else:
+                    messagebox.showinfo("No Resume", f"No resume found for Applicant {applicant_id}.")
+                cursor.close()
+                conn.close()
+            else:
+                messagebox.showerror("Database Error", "Could not connect to the database.")
+
+    resume_button = tk.Button(applicants_frame, text="View Resume", command=view_resume)
+    resume_button.pack(pady=5)
+
 
 
 # 2. Employee Management
