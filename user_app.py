@@ -34,7 +34,7 @@ def load_job_listings():
 
 def populate_job_listings():
     """Populating the job listings in the treeview."""
-    job_list.delete(*job_list.get_children())  # Clear existing jobs
+    job_list.delete(*job_list.get_children())
     jobs = load_job_listings()
 
     for job in jobs:
@@ -62,7 +62,7 @@ def apply_for_job():
 
             # Inserting resume details
             cursor.execute("""
-                INSERT INTO Resumes (ApplicantID, ResumeFilePath)
+                INSERT INTO Resumes (ApplicantID, ResumeGDriveLink)
                 VALUES (%s, %s)
             """, (applicant_id, resume_file_path))
             resume_id = cursor.lastrowid
